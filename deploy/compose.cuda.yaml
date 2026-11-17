@@ -1,0 +1,37 @@
+# CUDA llama-server (ik_llama.cpp), launched by llama-swap.
+# Params arrive as LLAMA_ARGS; LLAMA_PORT is the host port llama-swap proxies to.
+services:
+  llama:
+    image: llm/llama.cpp:server-cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute, utility]
+    ipc: host
+    init: true
+    shm_size: "8gb"
+    ulimits:
+      memlock: -1
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    environment:
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      OMP_NUM_THREADS: "8"
+      LLAMA_ARGS: ${LLAMA_ARGS}
+    volumes:
+      - ${MODELS_DIR:-./models}:/models:ro
+    command: ${LLAMA_ARGS}
+    ports:
+      - "127.0.0.1:${LLAMA_PORT}:8080"
+    stop_grace_period: 20s
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"

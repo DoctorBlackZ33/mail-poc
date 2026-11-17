@@ -1,0 +1,49 @@
+# Example: llama-swap keeps routing/UI, each model runs in its own compose stack.
+# Mount this directory into llama-swap, e.g.
+#   - ./deploy:/opt/ai/mail-inference:ro
+# then copy the model block below into the llama-swap config.
+
+models:
+  "mail-gemma4-e4b":
+    name: "Mail Gemma4 E4B"
+    env:
+      - >
+        LLAMA_ARGS=
+        --host 0.0.0.0 --port 8080
+        --model /models/gemma-4-E4B-it-Q4_K_M.gguf
+        --gpu-layers 99 --ctx-size 131072 --parallel 4 --jinja
+    cmd: >
+      env PORT=${PORT} LLAMA_PORT=9301 docker compose -p mail-gemma
+      -f /opt/ai/mail-inference/compose.rocm.yaml up
+    cmdStop: >
+      env PORT=${PORT} LLAMA_PORT=9301 docker compose -p mail-gemma
+      -f /opt/ai/mail-inference/compose.rocm.yaml down
+    proxy: http://127.0.0.1:9301
+    checkEndpoint: /health
+    ttl: 0
+
+  "mail-qwen3-embedding-0.6b":
+    name: "Mail Qwen3 Embedding 0.6B"
+    env:
+      - >
+        LLAMA_ARGS=
+        --host 0.0.0.0 --port 8080
+        --model /models/Qwen3-Embedding-0.6B-Q8_0.gguf
+        --embedding --pooling last --gpu-layers 99
+        --parallel 8 --ctx-size 16384
+    cmd: >
+      env PORT=${PORT} LLAMA_PORT=9303 docker compose -p mail-embed
+      -f /opt/ai/mail-inference/compose.cuda.yaml up
+    cmdStop: >
+      env PORT=${PORT} LLAMA_PORT=9303 docker compose -p mail-embed
+      -f /opt/ai/mail-inference/compose.cuda.yaml down
+    proxy: http://127.0.0.1:9303
+    checkEndpoint: /health
+    ttl: 0
+
+groups:
+  mail:
+    swap: false
+    exclusive: false
+    persistent: true
+    members: ["mail-gemma4-e4b", "mail-qwen3-embedding-0.6b"]

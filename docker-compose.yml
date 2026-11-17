@@ -1,0 +1,100 @@
+name: mail-poc
+
+services:
+  mail:
+    build:
+      context: ./services/mail
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    ports:
+      - "${MAIL_PORT:-9000}:8081"
+    restart: unless-stopped
+
+  # CPU embedding server (Qwen3-Embedding-0.6B Q8). ~0.6 GB model, no GPU.
+  embed:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --model
+      - /models/Qwen3-Embedding-0.6B-Q8_0.gguf
+      - --embedding
+      - --pooling
+      - last
+      - --ctx-size
+      - "8192"
+      - --parallel
+      - "4"
+      - --threads
+      - "${EMBED_THREADS:-8}"
+    volumes:
+      - ./models:/models:ro
+    restart: unless-stopped
+
+  retrieval:
+    build:
+      context: ./services/retrieval_local
+    environment:
+      EMBED_URL: http://embed:8080/v1/embeddings
+      EMBED_MODEL: Qwen3-Embedding-0.6B
+      VECTORS_DIR: /vectors
+      DATA_DIR: /data
+    volumes:
+      - ./vectors:/vectors:ro
+      - ./data:/data:ro
+    depends_on:
+      - embed
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./services/ui
+    environment:
+      MAIL_SERVICE_URL: http://mail:8081
+      MAIL_PUBLIC_URL: ${MAIL_PUBLIC_URL:-http://localhost:9000}
+      SEARCH_URL: http://retrieval:8082/search
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-chat}
+      LLM_API_KEY: ${LLM_API_KEY:-sk-local}
+      TOP_K: ${TOP_K:-6}
+    ports:
+      - "${UI_PORT:-9001}:8501"
+    depends_on:
+      mail:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # One-shot: embeds the corpus. Run via `docker compose --profile setup run --rm vectors`.
+  vectors:
+    build:
+      context: ./services/retrieval_local
+    profiles: ["setup"]
+    entrypoint: ["python", "/srv/build_vectors.py"]
+    environment:
+      EMBED_URL: http://embed:8080/v1/embeddings
+      EMBED_MODEL: Qwen3-Embedding-0.6B
+      VECTORS_DIR: /vectors
+      DATA_DIR: /data
+    volumes:
+      - ./vectors:/vectors
+      - ./data:/data:ro
+    depends_on:
+      - embed
+    restart: "no"
+
+  # Optional single-origin reverse proxy (auth goes here). `--profile proxy`.
+  proxy:
+    image: caddy:2-alpine
+    profiles: ["proxy"]
+    volumes:
+      - ./Caddyfile.example:/etc/caddy/Caddyfile:ro
+    ports:
+      - "${PROXY_PORT:-9080}:8080"
+    depends_on:
+      - mail
+      - ui
+    restart: unless-stopped
