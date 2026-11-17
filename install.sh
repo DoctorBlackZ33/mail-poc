@@ -24,7 +24,7 @@ fi
 echo "==> starting mail + embedding services"
 docker compose up -d mail embed
 
-echo "==> building vectors (first run embeds every message; CPU, minutes)"
+echo "==> building vectors (CPU embedding; ~1-2 h for 4.5k mails on 8 cores)"
 docker compose --profile setup run --rm vectors
 
 echo "==> starting retrieval + ui"

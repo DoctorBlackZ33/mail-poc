@@ -45,7 +45,8 @@ def embed(texts: list[str]) -> np.ndarray:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--batch", type=int, default=8)
+    ap.add_argument("--batch", type=int, default=16)
+    ap.add_argument("--limit", type=int, default=0, help="embed only the first N mails (smoke test)")
     ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
 
@@ -58,6 +59,9 @@ def main() -> int:
         return 0
 
     recs = [json.loads(line) for line in manifest.open(encoding="utf-8") if line.strip()]
+    if args.limit:
+        recs = recs[: args.limit]
+        print(f"limit: embedding {len(recs)} mails")
     wait_for_embed()
 
     meta, chunks = [], []
@@ -77,8 +81,10 @@ def main() -> int:
                 }
             )
         done = min(i + args.batch, len(recs))
-        if done % 200 < args.batch:
-            print(f"  {done}/{len(recs)} ({done/(time.time()-started):.1f}/s)")
+        if done % 100 < args.batch:
+            rate = done / max(time.time() - started, 0.1)
+            eta = (len(recs) - done) / rate / 60 if rate else 0
+            print(f"  {done}/{len(recs)} ({rate:.2f}/s, ~{eta:.0f} min left, flush)")
 
     arr = np.vstack(chunks)
     np.save(OUT / "vectors.npy", arr)
