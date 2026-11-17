@@ -1,0 +1,91 @@
+name: mail-simple
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-mail}
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - db:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-mail}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # The bot itself: ingest, ask, serve. Run on demand:
+  #   docker compose run --rm bot ingest
+  #   docker compose --profile bot up -d
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      PGHOST: db
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./maildir:/maildir
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: ["bot"]
+
+  # Optional local inference. If llama.cpp runs elsewhere, skip this profile
+  # and point EMBED_URL / RERANK_URL / CHAT_URL at that host in .env.
+  embed:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    profiles: ["llama"]
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --model
+      - /models/Qwen3-Embedding-0.6B-Q8_0.gguf
+      - --embedding
+      - --pooling
+      - last
+      - --ctx-size
+      - "8192"
+      - --parallel
+      - "4"
+    volumes:
+      - ./models:/models:ro
+
+  rerank:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    profiles: ["llama"]
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --model
+      - /models/Qwen3-Reranker-0.6B-Q8_0.gguf
+      - --rerank
+      - --ctx-size
+      - "8192"
+    volumes:
+      - ./models:/models:ro
+
+  chat:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    profiles: ["llama"]
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --model
+      - /models/gemma-4-E4B-it-Q4_K_M.gguf
+      - --ctx-size
+      - "32768"
+      - --parallel
+      - "2"
+    volumes:
+      - ./models:/models:ro
+
+volumes:
+  db:

@@ -1,7 +1,0 @@
-FROM python:3.12-slim
-
-RUN pip install --no-cache-dir "requests>=2.32,<3"
-COPY scripts/ingest_onyx.py /app/ingest.py
-
-WORKDIR /app
-CMD ["python", "/app/ingest.py"]

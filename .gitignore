@@ -1,6 +1,13 @@
-data/
-vectors/
-models/
 .env
 __pycache__/
 *.pyc
+models/*
+!models/.gitkeep
+maildir/new/*
+!maildir/new/.gitkeep
+maildir/cur/*
+!maildir/cur/.gitkeep
+maildir/tmp/*
+!maildir/tmp/.gitkeep
+maildir/Sent/*
+!maildir/Sent/.gitkeep
